@@ -72,6 +72,37 @@ func main() {
 					},
 				},
 			},
+			{
+				Name:    "candles",
+				Aliases: []string{"p"},
+				Usage:   "Get candles stream by polling",
+				Action:  candlesAction,
+				Flags: []cli.Flag{
+					&cli.StringFlag{
+						Name:     "instrument",
+						Aliases:  []string{"i"},
+						Required: true,
+					},
+					&cli.StringFlag{
+						Name:    "granularity",
+						Aliases: []string{"g"},
+						Value:   "S5",
+					},
+					&cli.TimestampFlag{
+						Name:        "from",
+						Layout:      time.RFC3339,
+						DefaultText: time.Now().Format(time.RFC3339),
+					},
+					&cli.DurationFlag{
+						Name:    "polling-interval",
+						Aliases: []string{"p"},
+						Value:   1 * time.Second,
+					},
+					&cli.BoolFlag{
+						Name: "completed-only",
+					},
+				},
+			},
 		},
 	}
 
@@ -170,4 +201,141 @@ func getStream(instruments string, heartbeat bool, heartbeatTimeout time.Duratio
 
 type PriceOrHeartbeat struct {
 	Type string `json:"type"`
+}
+
+func candlesAction(c *cli.Context) error {
+	instrument := c.String("instrument")
+	granularity := c.String("granularity")
+
+	from := time.Now()
+	_from := c.Timestamp("from")
+	if _from != nil {
+		from = *_from
+	}
+
+	pollingInterval := c.Duration("polling-interval")
+	completedOnly := c.Bool("completed-only")
+	err := getCandlesStream(instrument, granularity, from, pollingInterval, completedOnly)
+
+	return err
+}
+
+func getCandlesStream(instrument string, granularity string, from time.Time, pollingInterval time.Duration, completedOnly bool) error {
+	credentials, err := GetCredentials()
+	if err != nil {
+		return err
+	}
+
+	var lastCandle *Candlestick = nil
+
+	for {
+		candles, err := getCandlesForStream(credentials, instrument, granularity, from)
+		if err != nil {
+			return err
+		}
+
+		for _, candle := range *candles {
+			if completedOnly && candle.Complete == false {
+				continue
+			}
+
+			if lastCandle == nil || candle.NewerThan(lastCandle) {
+				bytes, err := json.Marshal(candle)
+				if err != nil {
+					return err
+				}
+				fmt.Println(string(bytes))
+			}
+		}
+
+		if len(*candles) != 0 {
+			lastCandle = &(*candles)[len(*candles)-1]
+			from = lastCandle.Time
+		}
+
+		time.Sleep(pollingInterval)
+	}
+}
+
+func GetIntPointer(val int) *int {
+	return &val
+}
+
+type CandlesResponseBody struct {
+	Candles     *[]Candlestick `json:"candles"`
+	Granularity string         `json:"granularity"`
+	Instrument  string         `json:"instrument"`
+}
+
+type Candlestick struct {
+	Complete bool             `json:"complete"`
+	Volume   int              `json:"volume"`
+	Time     time.Time        `json:"time"`
+	Mid      *CandlestickData `json:"mid"`
+	Bid      *CandlestickData `json:"bid"`
+	Ask      *CandlestickData `json:"ask"`
+}
+
+func (self *Candlestick) NewerThan(other *Candlestick) bool {
+	if self.Time.After(other.Time) {
+		return true
+	} else if self.Time.Equal(other.Time) {
+		if self.Complete == false && other.Complete == false {
+			return self.Volume > other.Volume
+		} else if self.Complete == true && other.Complete == false {
+			return true
+		} else {
+			return false
+		}
+	} else {
+		return false
+	}
+}
+
+type CandlestickData struct {
+	O string `json:"o"`
+	H string `json:"h"`
+	L string `json:"l"`
+	C string `json:"c"`
+}
+
+func getCandlesForStream(credentials *Credentials, instrument string, granularity string, from time.Time) (*[]Candlestick, error) {
+	account := credentials.Default
+
+	baseUrl := "https://api-fxpractice.oanda.com"
+	query := fmt.Sprintf("from=%s&granularity=%s&price=MBA", from.Format(time.RFC3339), granularity)
+	url := fmt.Sprintf("%s/v3/instruments/%s/candles?%s", baseUrl, instrument, query)
+
+	req, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", account.Token))
+
+	client := new(http.Client)
+	res, err := client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer res.Body.Close()
+
+	bytes, err := ioutil.ReadAll(res.Body)
+	if err != nil {
+		return nil, err
+	}
+
+	if res.StatusCode != 200 {
+		fmt.Fprintln(os.Stderr, res.Status)
+		return nil, errors.New(string(bytes))
+	}
+
+	// fmt.Fprintln(os.Stderr, string(bytes))
+
+	var body CandlesResponseBody
+	if err := json.Unmarshal(bytes, &body); err != nil {
+		return nil, err
+	}
+
+	return body.Candles, nil
 }
