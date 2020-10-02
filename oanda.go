@@ -63,8 +63,9 @@ func main() {
 						Name: "heartbeat",
 					},
 					&cli.DurationFlag{
-						Name:    "heartbeat-timeout-sec",
+						Name:    "heartbeat-timeout",
 						Aliases: []string{"t"},
+						Value:   6 * time.Second,
 					},
 					&cli.BoolFlag{
 						Name:    "all-instruments",
@@ -115,7 +116,7 @@ func main() {
 func pricingAction(c *cli.Context) error {
 	instruments := c.String("instruments")
 	heartbeat := c.Bool("heartbeat")
-	heartbeatTimeout := c.Duration("heartbeat-timeout-sec")
+	heartbeatTimeout := c.Duration("heartbeat-timeout")
 	err := getStream(instruments, heartbeat, heartbeatTimeout)
 
 	return err
