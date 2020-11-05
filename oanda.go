@@ -38,13 +38,18 @@ func GetCredentials(path string) (*Credentials, error) {
 }
 
 func GetDefaultConfigPath() (*string, error) {
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return nil, err
-	}
+	path := os.Getenv("OANDA_CREDENTIALS_PATH")
+	if path != "" {
+		return &path, nil
+	} else {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return nil, err
+		}
 
-	path := fmt.Sprintf("%s/.config/oanda/credentials.yaml", home)
-	return &path, nil
+		path := fmt.Sprintf("%s/.config/oanda/credentials.yaml", home)
+		return &path, nil
+	}
 }
 
 func main() {
@@ -83,7 +88,7 @@ func main() {
 					&cli.StringFlag{
 						Name:    "config",
 						Aliases: []string{"c"},
-						Value: *defaultConfig,
+						Value:   *defaultConfig,
 					},
 				},
 			},
@@ -119,7 +124,7 @@ func main() {
 					&cli.StringFlag{
 						Name:    "config",
 						Aliases: []string{"c"},
-						Value: *defaultConfig,
+						Value:   *defaultConfig,
 					},
 				},
 			},
