@@ -22,13 +22,7 @@ type Credentials struct {
 	}
 }
 
-func GetCredentials() (*Credentials, error) {
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return nil, err
-	}
-
-	path := fmt.Sprintf("%s/.config/oanda/credentials.yaml", home)
+func GetCredentials(path string) (*Credentials, error) {
 	bytes, err := ioutil.ReadFile(path)
 	if err != nil {
 		return nil, err
@@ -43,7 +37,22 @@ func GetCredentials() (*Credentials, error) {
 	return &credentials, nil
 }
 
+func GetDefaultConfigPath() (*string, error) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return nil, err
+	}
+
+	path := fmt.Sprintf("%s/.config/oanda/credentials.yaml", home)
+	return &path, nil
+}
+
 func main() {
+	defaultConfig, err := GetDefaultConfigPath()
+	if err != nil {
+		log.Fatal(err)
+	}
+
 	app := &cli.App{
 		Name:  "oanda-cli",
 		Usage: "oanda v20 cli",
@@ -70,6 +79,11 @@ func main() {
 					&cli.BoolFlag{
 						Name:    "all-instruments",
 						Aliases: []string{"a"},
+					},
+					&cli.StringFlag{
+						Name:    "config",
+						Aliases: []string{"c"},
+						Value: *defaultConfig,
 					},
 				},
 			},
@@ -102,12 +116,17 @@ func main() {
 					&cli.BoolFlag{
 						Name: "completed-only",
 					},
+					&cli.StringFlag{
+						Name:    "config",
+						Aliases: []string{"c"},
+						Value: *defaultConfig,
+					},
 				},
 			},
 		},
 	}
 
-	err := app.Run(os.Args)
+	err = app.Run(os.Args)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -117,13 +136,14 @@ func pricingAction(c *cli.Context) error {
 	instruments := c.String("instruments")
 	heartbeat := c.Bool("heartbeat")
 	heartbeatTimeout := c.Duration("heartbeat-timeout")
-	err := getStream(instruments, heartbeat, heartbeatTimeout)
+	configPath := c.String("config")
+	err := getStream(instruments, heartbeat, heartbeatTimeout, configPath)
 
 	return err
 }
 
-func getStream(instruments string, heartbeat bool, heartbeatTimeout time.Duration) error {
-	credentials, err := GetCredentials()
+func getStream(instruments string, heartbeat bool, heartbeatTimeout time.Duration, configPath string) error {
+	credentials, err := GetCredentials(configPath)
 	if err != nil {
 		return err
 	}
@@ -216,13 +236,14 @@ func candlesAction(c *cli.Context) error {
 
 	pollingInterval := c.Duration("polling-interval")
 	completedOnly := c.Bool("completed-only")
-	err := getCandlesStream(instrument, granularity, from, pollingInterval, completedOnly)
+	configPath := c.String("config")
+	err := getCandlesStream(instrument, granularity, from, pollingInterval, completedOnly, configPath)
 
 	return err
 }
 
-func getCandlesStream(instrument string, granularity string, from time.Time, pollingInterval time.Duration, completedOnly bool) error {
-	credentials, err := GetCredentials()
+func getCandlesStream(instrument string, granularity string, from time.Time, pollingInterval time.Duration, completedOnly bool, configPath string) error {
+	credentials, err := GetCredentials(configPath)
 	if err != nil {
 		return err
 	}
