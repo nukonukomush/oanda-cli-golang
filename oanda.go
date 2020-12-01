@@ -330,7 +330,7 @@ func getCandlesForStream(credentials *Credentials, instrument string, granularit
 	account := credentials.Default
 
 	baseUrl := "https://api-fxpractice.oanda.com"
-	query := fmt.Sprintf("from=%s&granularity=%s&price=MBA", from.Format(time.RFC3339), granularity)
+	query := fmt.Sprintf("from=%s&granularity=%s&price=MBA&count=5000", from.Format(time.RFC3339), granularity)
 	url := fmt.Sprintf("%s/v3/instruments/%s/candles?%s", baseUrl, instrument, query)
 
 	req, err := http.NewRequest("GET", url, nil)
