@@ -128,6 +128,27 @@ func main() {
 					},
 				},
 			},
+			{
+				Name:    "transactions",
+				Aliases: []string{"t"},
+				Usage:   "Get transaction stream",
+				Action:  transactionsAction,
+				Flags: []cli.Flag{
+					&cli.BoolFlag{
+						Name: "heartbeat",
+					},
+					&cli.DurationFlag{
+						Name:    "heartbeat-timeout",
+						Aliases: []string{"t"},
+						Value:   5 * time.Second,
+					},
+					&cli.StringFlag{
+						Name:    "config",
+						Aliases: []string{"c"},
+						Value:   *defaultConfig,
+					},
+				},
+			},
 		},
 	}
 
@@ -365,4 +386,94 @@ func getCandlesForStream(credentials *Credentials, instrument string, granularit
 	}
 
 	return body.Candles, nil
+}
+
+func transactionsAction(c *cli.Context) error {
+	heartbeat := c.Bool("heartbeat")
+	heartbeatTimeout := c.Duration("heartbeat-timeout")
+	configPath := c.String("config")
+	err := getTransactionStream(heartbeat, heartbeatTimeout, configPath)
+
+	return err
+}
+
+func getTransactionStream(heartbeat bool, heartbeatTimeout time.Duration, configPath string) error {
+	credentials, err := GetCredentials(configPath)
+	if err != nil {
+		return err
+	}
+	account := credentials.Default
+
+	baseUrl := "https://stream-fxpractice.oanda.com"
+	url := fmt.Sprintf("%s/v3/accounts/%s/transactions/stream", baseUrl, account.AccountId)
+
+	req, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", account.Token))
+
+	client := new(http.Client)
+	res, err := client.Do(req)
+	if err != nil {
+		return err
+	}
+	defer res.Body.Close()
+
+	if res.StatusCode != 200 {
+		fmt.Fprintln(os.Stderr, res.Status)
+		body, err := ioutil.ReadAll(res.Body)
+		if err != nil {
+			return err
+		}
+		return errors.New(string(body))
+	}
+
+	heartbeatChannel := make(chan struct{})
+
+	if heartbeatTimeout != 0 {
+		go func() {
+			for {
+				select {
+				case <-heartbeatChannel:
+				case <-time.After(heartbeatTimeout):
+					panic("heartbeat timeout")
+				}
+			}
+		}()
+	}
+
+	reader := bufio.NewReader(res.Body)
+	for {
+		line, _, err := reader.ReadLine()
+		if err != nil {
+			return err
+		}
+		if line == nil {
+			break
+		}
+
+		var th TransactionOrHeartbeat
+		if err := json.Unmarshal(line, &th); err != nil {
+			return err
+		}
+
+		if th.Type == "HEARTBEAT" {
+			if heartbeatTimeout != 0 {
+				heartbeatChannel <- struct{}{}
+			}
+			if heartbeat {
+				fmt.Println(string(line))
+			}
+		} else {
+			fmt.Println(string(line))
+		}
+	}
+
+	return err
+}
+
+type TransactionOrHeartbeat struct {
+	Type string `json:"type"`
 }
