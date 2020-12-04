@@ -79,7 +79,7 @@ func main() {
 					&cli.DurationFlag{
 						Name:    "heartbeat-timeout",
 						Aliases: []string{"t"},
-						Value:   6 * time.Second,
+						Value:   7 * time.Second,
 					},
 					&cli.BoolFlag{
 						Name:    "all-instruments",
@@ -140,7 +140,7 @@ func main() {
 					&cli.DurationFlag{
 						Name:    "heartbeat-timeout",
 						Aliases: []string{"t"},
-						Value:   5 * time.Second,
+						Value:   6 * time.Second,
 					},
 					&cli.StringFlag{
 						Name:    "config",
